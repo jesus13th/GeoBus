@@ -1,0 +1,14 @@
+﻿<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://xamarin.com/schemas/2014/forms"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="GeoBus.Views.SplashPage">
+    <ContentPage.Content>
+        <StackLayout BackgroundColor="Black">
+            <Grid RowDefinitions="*, *" VerticalOptions="CenterAndExpand" HorizontalOptions="CenterAndExpand" >
+                <Image x:Name="logoImg" Source="logo" HeightRequest="128" Grid.Row="0" />
+                <Label x:Name="nameText" IsVisible="false" Text="GeoBus" TextColor="White" FontSize="50" FontFamily="CustomFont" VerticalOptions="Start" HorizontalOptions="CenterAndExpand" Grid.Row="1"/>
+            </Grid>
+            <Label Text="Creado por: Jesus Robles" FontFamily="CustomFont" TextColor="White" Margin="20" HorizontalOptions="CenterAndExpand"/>
+        </StackLayout>
+    </ContentPage.Content>
+</ContentPage>

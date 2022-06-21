@@ -1,0 +1,66 @@
+﻿<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://xamarin.com/schemas/2014/forms"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:map="clr-namespace:Xamarin.Forms.GoogleMaps;assembly=Xamarin.Forms.GoogleMaps" 
+             xmlns:admob="clr-namespace:MarcTron.Plugin.Controls;assembly=Plugin.MtAdmob"
+             x:Class="GeoBus.Views.MainPage">
+    <NavigationPage.TitleView>
+        <StackLayout Orientation="Horizontal" HorizontalOptions="CenterAndExpand">
+            <Grid ColumnDefinitions="auto, *">
+                <Image Source="logo" HeightRequest="35" WidthRequest="35" Grid.Column="0"/>
+                <SearchBar x:Name="searchEntry" Placeholder="¿A donde vas?" TextColor="White" PlaceholderColor="#aaa" BackgroundColor="#333" SearchButtonPressed="searchBtn_Clicked" Grid.Column="1"/>
+            </Grid>
+        </StackLayout>
+    </NavigationPage.TitleView>
+    <StackLayout VerticalOptions="FillAndExpand">
+        <AbsoluteLayout VerticalOptions="FillAndExpand">
+            <map:Map x:Name="map"  AbsoluteLayout.LayoutBounds="0,0,1,1" AbsoluteLayout.LayoutFlags="All" />
+            <StackLayout x:Name="aiLayout" IsVisible="true" AbsoluteLayout.LayoutBounds="0,0,1,1" AbsoluteLayout.LayoutFlags="All" BackgroundColor="Gray" Opacity="0.5">
+                <ActivityIndicator IsRunning="true" HorizontalOptions="CenterAndExpand" VerticalOptions="CenterAndExpand" Color="Black"/>
+            </StackLayout>
+        </AbsoluteLayout>
+        <StackLayout VerticalOptions="End">
+            <Grid IsVisible="true" ColumnDefinitions="*, auto" RowDefinitions="auto, auto" Margin="10">
+                <Frame BorderColor="Black" CornerRadius="15" Padding="15, 0">
+                    <Picker x:Name="busPicker" Title="Selecciona un autobus" ItemsSource="{Binding Routes}"/>
+                </Frame>
+                <Button x:Name="viewRouteBtn" Text="Ver Ruta" CornerRadius="15" Grid.Column="1" Clicked="viewRouteBtn_Clicked" BackgroundColor="Black" TextColor="White" />
+                <ListView x:Name="routesList" IsVisible="false" Grid.Row="1" Grid.ColumnSpan="2" HeightRequest="200"  VerticalOptions="FillAndExpand" HasUnevenRows="True" SelectionMode="None">
+                    <ListView.ItemTemplate>
+                        <DataTemplate>
+                            <ViewCell>
+                                <ViewCell.View>
+                                    <Grid ColumnDefinitions="auto, auto" HeightRequest="60" Padding="20, 0">
+                                        <Image Source="bus" Grid.Column="0"/>
+                                        <Label Text="{Binding RouteName}" FontSize="Title"  VerticalOptions="FillAndExpand" VerticalTextAlignment="Center" TextColor="{Binding RouteColor}"  Grid.Column="1"/>
+                                    </Grid>
+                                </ViewCell.View>
+                            </ViewCell>
+                        </DataTemplate>
+                    </ListView.ItemTemplate>
+                </ListView>
+            </Grid>
+            <!--#region Developer Mode-->
+            <Grid IsVisible="true" RowDefinitions="auto, auto, auto" ColumnDefinitions="*, auto" Margin="15">
+                <Label Text="Developer Mode" FontSize="Title" TextColor="Black" BackgroundColor="Red" Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="2" HorizontalOptions="Center" />
+
+                <Entry x:Name="RouteNameEntry" Placeholder="Nombre de la ruta" Grid.Column="0" Grid.Row="1" />
+                <Button x:Name="RegisterBtn" Text="Registrar" Grid.Row="1" Grid.Column="1" Clicked="RegisterBtn_Clicked"/>
+
+                <Label Text="Latitud" FontSize="Subtitle" TextColor="Black" Grid.Row="2" VerticalOptions="Center"/>
+                <Entry x:Name="LatitudEntry" Placeholder="Latitud" Grid.Row="2" Grid.Column="1" IsReadOnly="True"/>
+
+                <Label Text="Longitud" FontSize="Subtitle" TextColor="Black" Grid.Row="3" VerticalOptions="Center"/>
+                <Entry x:Name="LongitudEntry" Placeholder="Longitud" Grid.Row="3" Grid.Column="1" IsReadOnly="True"/>
+
+                <Label Text="Time" FontSize="Subtitle" TextColor="Black" Grid.Row="4" VerticalOptions="Center"/>
+                <Entry x:Name="TimeEntry" Placeholder="Time" Grid.Row="4" Grid.Column="1" IsReadOnly="True"/>
+
+                <Button x:Name="FinishBtn" Text="Finalizar" BackgroundColor="Black" TextColor="White" Grid.Row="5" Grid.ColumnSpan="2" Clicked="FinishBtn_Clicked"/>
+            </Grid>
+            <!--#endregion -->
+            <admob:AdView AdsId="ca-app-pub-3940256099942544/6300978111"/>
+        </StackLayout>
+    </StackLayout>
+
+</ContentPage>
