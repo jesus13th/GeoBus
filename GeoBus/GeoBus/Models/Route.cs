@@ -1,8 +1,11 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Linq;
 
 using GeoBus.Services;
+
+using Newtonsoft.Json;
 
 using Xamarin.Forms;
 using Xamarin.Forms.GoogleMaps;
@@ -23,7 +26,7 @@ namespace GeoBus.Models {
             startTime = DateTime.Now.TimeOfDay;
             Nodes.Add(new RouteNode() { Latitude = location.latitude, Longitude = location.longitude, Time = time });
         }
-
+        [JsonIgnore]
         public (double lat, double lon) Center => (Nodes.Select(n => n.Latitude).Average(), Nodes.Select(n => n.Longitude).Average());
     }
     public class RouteNode {
@@ -32,8 +35,21 @@ namespace GeoBus.Models {
         public TimeSpan Time { get; set; }
         public Position ToPosition => new Position(Latitude, Longitude);
     }
-    public class RouteItem {
+    public class RouteItem : INotifyPropertyChanged {
         public string RouteName { get; set; }
         public Color RouteColor { get; set; }
+        private TimeSpan timeAutobus;
+        public TimeSpan TimeAutobus { get { return timeAutobus; } set { timeAutobus = value; /*RaisePropertyChanged("TimeAutobus");*/ } }
+        private TimeSpan timeWalking;
+        public TimeSpan TimeWalking { get { return timeWalking; } set { timeWalking = value; RaisePropertyChanged("TimeWalking"); } }
+        public string GetTimeAutobus { get => $"Tiempo: {TimeAutobus}"; private set { } }
+        public string GetTimeWalking { get => $"Tiempo: {TimeWalking}"; private set { } }
+        public event PropertyChangedEventHandler PropertyChanged;
+        public void RaisePropertyChanged(string propertyName) {
+            PropertyChangedEventHandler handler = PropertyChanged;
+            if (handler != null) {
+                handler(this, new PropertyChangedEventArgs(propertyName));
+            }
+        }
     }
 }

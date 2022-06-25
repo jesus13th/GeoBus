@@ -9,7 +9,7 @@
 *.user
 *.userosscache
 *.sln.docstates
-*.\GeoBus\GeoBus\Services\Keys.cs
+*.\GeoBus\GeoBus\GeoBus\Services\Keys.cs
 
 # User-specific files (MonoDevelop/Xamarin Studio)
 *.userprefs

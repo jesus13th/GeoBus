@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 
 using GeoBus.Models;
 using GeoBus.Services;
@@ -15,68 +16,37 @@ using Xamarin.Forms.Xaml;
 using static GeoBus.Services.OSRMRouteService;
 using static Xamarin.Forms.GoogleMaps.BitmapDescriptorFactory;
 
+using Polyline = Xamarin.Forms.GoogleMaps.Polyline;
+
 namespace GeoBus.Views {
     [XamlCompilation(XamlCompilationOptions.Compile)]
     public partial class MainPage : ContentPage {
+        #region Fields & Constructor
         private const string City = "Tepic";
         private Geocoder geocoder = new Geocoder();
-        private Pin currentLocationPin = new Pin();
-        private Pin destiantionPin = new Pin();
+        private OSRMRouteService osrm = new OSRMRouteService();
+        private Pin currentLocationPin, destiantionPin, busStopPin, destinationStopPin = new Pin();
+        private Polyline polylineToDestination, polylineToMe = new Polyline();
         public List<Route> Routes;
-        public List<Pin> tmpPins = new List<Pin>();
         private Route currentRoute;
 
         public MainPage() {
             InitializeComponent();
             BindingContext = this;
             aiLayout.IsVisible = true;
+            Create();
         }
-        protected override async void OnAppearing() {
-            base.OnAppearing();
-            do {
-                try {
-                    Routes = (await App.Instance.databaseRoutes.ReadAll()).ToList();
-                } catch (Exception ex) {
-                    var snackBarOptions = new SnackBarOptions() { BackgroundColor = Color.Red, Duration = TimeSpan.FromMilliseconds(2000), MessageOptions = new MessageOptions() { Message = $"Error: {ex.Message}", Foreground = Color.White } };
-                    await this.DisplaySnackBarAsync(snackBarOptions);
-                    await this.DisplayAlert("Error", "Hubo un error al cargar la base de datos, reinicia la app", "Ok");
-                    return;
-                }
-            }
-            while (Routes == null);
+        #endregion
 
-            busPicker.ItemsSource = Routes.Select(r => r.RouteName).ToList();
-
-            var location = await Geolocation.GetLocationAsync(new GeolocationRequest(GeolocationAccuracy.Default, TimeSpan.FromMinutes(1)));
-            map.MoveToRegion(MapSpan.FromCenterAndRadius(new Position(location.Latitude, location.Longitude), Distance.FromKilometers(1)), false);
-            if (currentLocationPin != null)
-                map.Pins.Remove(currentLocationPin);
-            currentLocationPin = new Pin() { Label = "Mi ubicacion", Icon = FromBundle("location_person.png"), Position = new Position(location.Latitude, location.Longitude), IsDraggable = false };
-            map.Pins.Add(currentLocationPin);
-            Device.StartTimer(TimeSpan.FromSeconds(3), () => { UpdateLocation(); return true; });
-            aiLayout.IsVisible = false;
-        }
-        private async void UpdateLocation() {
-            if (!App.Instance.IsSleep) {
-                try {
-                    Location location = await Geolocation.GetLocationAsync(new GeolocationRequest(GeolocationAccuracy.Default, TimeSpan.FromMinutes(1)));
-                    currentLocationPin.Position = new Position(location.Latitude, location.Longitude);
-                } catch (Exception ex) {
-                    var snackBarOptions = new SnackBarOptions() { BackgroundColor = Color.Red, Duration = TimeSpan.FromMilliseconds(2000), MessageOptions = new MessageOptions() { Message = $"Error: {ex.Message}", Foreground = Color.White } };
-                    await this.DisplaySnackBarAsync(snackBarOptions);
-                }
-            }
-        }
+        #region UI Methods
         private async void searchBtn_Clicked(object sender, EventArgs e) {
             aiLayout.IsVisible = true;
-            tmpPins.ForEach(p => map.Pins.Remove(p));
             if (searchEntry.Text != string.Empty) {
                 Location location = new Location();
                 try {
                     location = (await Geocoding.GetLocationsAsync($"{ searchEntry.Text } { City }")).FirstOrDefault();
                 } catch (Exception ex) {
                     SnackBarOptions snackBarOptions = new SnackBarOptions() { BackgroundColor = Color.Red, Duration = TimeSpan.FromMilliseconds(2000), MessageOptions = new MessageOptions() { Message = $"Error: {ex.Message}", Foreground = Color.White } };
-                    await this.DisplaySnackBarAsync(snackBarOptions);
                     await this.DisplayToastAsync("ha ocurrido un error y no se pudo realizar la busqueda :(, reintentalo");
                     aiLayout.IsVisible = false;
                     return;
@@ -87,17 +57,81 @@ namespace GeoBus.Views {
                 map.Pins.Remove(destiantionPin);
                 destiantionPin = new Pin() { Address = "Desitno", Label = "Destination", Position = new Position(location.Latitude, location.Longitude), Icon = FromBundle("pin_destination.png") };
                 map.Pins.Add(destiantionPin);
-                GetNearestRoute((location.Latitude, location.Longitude));
+                await GetNearestRoute((location.Latitude, location.Longitude));
             }
             aiLayout.IsVisible = false;
         }
-        private void GetNearestRoute((double lat, double lon) location) {
+        private void viewRouteBtn_Clicked(object sender, EventArgs e) {
+            if (busPicker.SelectedItem == null) return;
+            DisplayRoute((string)busPicker.SelectedItem, Color.Black, true);
+        }
+        private void DisplayRoute(string bus, Color color, bool removePrevs) {
+            var route = Routes.FirstOrDefault(r => r.RouteName == bus);
+            if (removePrevs) {
+                map.Polylines.Clear();
+                map.MoveToRegion(MapSpan.FromCenterAndRadius(route.Center.ToPosition(), Distance.FromKilometers(1)));
+            }
+            var polyLine = new Polyline() { StrokeColor = color, StrokeWidth = 5 };
+
+            foreach (var n in route.Nodes.Select((value, i) => new { i, value })) {
+                polyLine.Positions.Add(n.value.ToPosition);
+            }
+            map.Polylines.Add(polyLine);
+            polyLine.IsClickable = true;
+            polyLine.Clicked += (s, e) => { map.Polylines.Remove(s as Polyline); };
+        }
+        private void routesList_ItemTapped(object sender, ItemTappedEventArgs e) {
+            var route = e.Item as RouteItem;
+            DisplayRoute(route.RouteName, route.RouteColor, true);
+            GetBusStopNearToMe(route.RouteName);
+            GetBusStopNearToDestination(route.RouteName);
+        }
+        #endregion
+
+        #region Own Methods
+        private async void Create() {
+            do {
+                try {
+                    Routes = App.Instance.databaseRoutes.ReadAll().ToList();
+                } catch (Exception ex) {
+                    var snackBarOptions = new SnackBarOptions() { BackgroundColor = Color.Red, Duration = TimeSpan.FromMilliseconds(2000), MessageOptions = new MessageOptions() { Message = $"Error: {ex.Message}", Foreground = Color.White } };
+                    await this.DisplaySnackBarAsync(snackBarOptions);
+                    await this.DisplayAlert("Error", $"La aplicacion no se ha podido conectar a la red, verifica la conexion", "Ok");
+                    return;
+                }
+            }
+            while (Routes == null);
+
+            busPicker.ItemsSource = Routes.Select(r => r.RouteName).ToList();
+
+            var location = await Geolocation.GetLocationAsync(new GeolocationRequest(GeolocationAccuracy.Default, TimeSpan.FromSeconds(5)));
+            map.MoveToRegion(MapSpan.FromCenterAndRadius(new Position(location.Latitude, location.Longitude), Distance.FromKilometers(1)), false);
+            if (currentLocationPin != null) map.Pins.Remove(currentLocationPin);
+            currentLocationPin = new Pin() { Label = "Mi ubicacion", Icon = FromBundle("location_person.png"), Position = new Position(location.Latitude, location.Longitude), IsDraggable = false };
+            map.Pins.Add(currentLocationPin);
+            Device.StartTimer(TimeSpan.FromSeconds(3), () => { UpdateLocation(); return true; });
+            aiLayout.IsVisible = false;
+        }
+        private async void UpdateLocation() {
+            if (!App.Instance.IsSleep) {
+                try {
+                    Console.WriteLine("Actualiza posicion");
+                    Location location = await Geolocation.GetLocationAsync(new GeolocationRequest(GeolocationAccuracy.Default, TimeSpan.FromSeconds(5)));
+                    currentLocationPin.Position = new Position(location.Latitude, location.Longitude);
+                } catch (Exception ex) {
+                    var snackBarOptions = new SnackBarOptions() { BackgroundColor = Color.Red, Duration = TimeSpan.FromMilliseconds(2000), MessageOptions = new MessageOptions() { Message = $"Error: {ex.Message}", Foreground = Color.White } };
+                    await this.DisplaySnackBarAsync(snackBarOptions);
+                }
+            }
+        }
+        private async Task GetNearestRoute((double lat, double lon) location) {
             Dictionary<string, (double lat, double lon)> nearestRoutes = new Dictionary<string, (double lat, double lon)>();
             (double lat, double lon) nearestNode = default;
             const int routesCount = 3;
+            var colors = new Color[] { Color.Red, Color.Green, Color.Blue };
+            List<RouteItem> routeItems = new List<RouteItem>();
 
             map.Polylines.Clear();
-            tmpPins.ForEach(p => map.Pins.Remove(p));
             routesList.IsVisible = true;
 
             foreach (Route route in Routes) {
@@ -111,58 +145,75 @@ namespace GeoBus.Views {
                 }
                 nearestRoutes.Add(route.RouteName, nearestNode);
             }
-
-            var colors = new Color[] { Color.Red, Color.Green, Color.Blue };
             var ordered = nearestRoutes.OrderBy(x => HaversineDistance((location.lat, location.lon), (x.Value.lat, x.Value.lon))).ToDictionary(x => x.Key, x => x.Value);
-            List<RouteItem> routeItems = new List<RouteItem>();
-
             foreach (var route in ordered.Keys.Take(routesCount).Select((value, i) => (value, i))) {
-                DisplayRoute(route.value, colors[route.i], false);
-                routeItems.Add(new RouteItem() { RouteName = route.value, RouteColor = colors[route.i] });
-                var pin = new Pin() { Label = $"Bajada de {route.value} mas cercana a tu destino.", Position = new Position(nearestRoutes[route.value].lat, nearestRoutes[route.value].lon), Icon = FromBundle("Bus End.png") };
-                tmpPins.Add(pin);
-                map.Pins.Add(pin);
+                var durationToBusStop = (await GetRoute_OSRM(currentLocationPin, GetBusStopNear(route.value, currentLocationPin, out int startIndex).nearestNode.ToPosition().PositionToTuple())).duration;
+                var durationToDestination = (await GetRoute_OSRM(destiantionPin, GetBusStopNear(route.value, destiantionPin, out int endIndex).nearestNode.ToPosition().PositionToTuple())).duration;
+                var timeAutobus = Routes.FirstOrDefault(r => r.RouteName == route.value).Nodes.GetRange(startIndex, (endIndex < startIndex ? Routes.FirstOrDefault(r => r.RouteName == route.value).Nodes.Count : endIndex) - startIndex).Sum(r => r.Time.TotalSeconds);
+
+                if (endIndex < startIndex)
+                    timeAutobus += Routes[route.i].Nodes.GetRange(0, endIndex + 1).Sum(n => n.Time.TotalSeconds);
+
+                routeItems.Add(new RouteItem() { RouteName = route.value, RouteColor = colors[route.i], TimeWalking = TimeSpan.FromSeconds(durationToBusStop + durationToDestination).StripMilliseconds(), TimeAutobus = TimeSpan.FromSeconds(timeAutobus)});
             }
-            routeItems.ForEach(item => Console.WriteLine($"name: {item.RouteName}, Color: {item.RouteColor}"));
             routesList.ItemsSource = routeItems;
             map.MoveToRegion(MapSpan.FromCenterAndRadius(location.ToPosition(), Distance.FromKilometers(1)));
-            GetBusStopNearest(ordered.Keys.Take(routesCount).ToList());
         }
-        private void GetBusStopNearest(List<string> routes) {
-            var myCurrenLocation = currentLocationPin.Position;
+        private (Route route, (double, double) nearestNode) GetBusStopNear(string to, Pin pinTo, out int index) {
+            var toLocation = pinTo.Position;
             (double lat, double lon) nearestNode = default;
+            Route route = Routes.FirstOrDefault(r => r.RouteName == to);
+            double nearestDistance = double.MaxValue;
+            index = default;
 
-            foreach (Route route in Routes.Where(x => routes.Contains(x.RouteName))) {
-                double nearestDistance = double.MaxValue;
-                foreach (RouteNode node in route.Nodes) {
-                    var distance = HaversineDistance((myCurrenLocation.Latitude, myCurrenLocation.Longitude), (node.Latitude, node.Longitude));
-                    if (distance < nearestDistance) {
-                        nearestDistance = distance;
-                        nearestNode = (node.Latitude, node.Longitude);
-                    }
+            foreach (var node in route.Nodes.Select((value, i) =>  (value, i))) {
+                var dist = HaversineDistance(toLocation.PositionToTuple(), (node.value.Latitude, node.value.Longitude));
+                if (dist < nearestDistance) {
+                    nearestDistance = dist;
+                    nearestNode = (node.value.Latitude, node.value.Longitude);
+                    index = node.i;
                 }
-                Pin pin = new Pin() { Label = $"Para de autobus: {route.RouteName}.", Position = nearestNode.ToPosition(), Icon = FromBundle("BusStop.png") };
-                tmpPins.Add(pin);
-                map.Pins.Add(pin);
             }
+            return (route, nearestNode);
         }
-        private void viewRouteBtn_Clicked(object sender, EventArgs e) {
-            tmpPins.ForEach(p => map.Pins.Remove(p));
-            if (busPicker.SelectedItem == null) return;
-            DisplayRoute((string)busPicker.SelectedItem, Color.Black, true);
+        private async Task<(double duration, List<LatLong> locations)> GetRoute_OSRM(Pin from, (double lat, double lon) to) {
+            var result = await osrm.GetDirectionResponseAsync(from.Position.PositionToTuple(), to);
+            const double humanSpeed = 5;// 5Km/h
+            const double velocity = (humanSpeed * 1000) / 3600;// meters/segs
+            var duration = result.routes[0].distance / velocity;
+
+            return (duration, DecodePolylinePoints(result.routes[0].geometry));
         }
-        private void DisplayRoute(string bus, Color color, bool removePrevs) {
-            var route = Routes.FirstOrDefault(r => r.RouteName == bus);
-            if (removePrevs) {
-                map.Polylines.Clear();
-                map.MoveToRegion(MapSpan.FromCenterAndRadius(route.Center.ToPosition(), Distance.FromKilometers(1)));
-            }
-            var polyLine = new Polyline() { StrokeColor = color, StrokeWidth = 5 };
-            route.Nodes.ForEach(n => polyLine.Positions.Add(n.ToPosition));
-            map.Polylines.Add(polyLine);
-            polyLine.IsClickable = true;
-            polyLine.Clicked += (s, e) => { map.Polylines.Remove(s as Polyline); };
+        private async void GetBusStopNearToMe(string route) {
+            var busStop = GetBusStopNear(route, currentLocationPin, out _);
+
+            map.Pins.Remove(busStopPin);
+            busStopPin = new Pin() { Label = $"Parada de autobus: {busStop.route.RouteName}.", Position = busStop.nearestNode.ToPosition(), Icon = FromBundle("BusStop.png") };
+            map.Pins.Add(busStopPin);
+
+            var osrm = await GetRoute_OSRM(currentLocationPin, busStopPin.Position.PositionToTuple());
+            var _route = routesList.ItemsSource.Cast<RouteItem>().FirstOrDefault(r => r.RouteName == route);
+            _route.TimeWalking = new TimeSpan(0, 5, 5);
+            map.Polylines.Remove(polylineToMe);
+            polylineToMe = new Polyline() { StrokeColor = Color.Black, StrokeWidth = 5 };
+            osrm.locations.ForEach(l => polylineToMe.Positions.Add(new Position(l.Lat, l.Long)));
+            map.Polylines.Add(polylineToMe);
         }
+        private async void GetBusStopNearToDestination(string route) {
+            var busStop = GetBusStopNear(route, destiantionPin, out _);
+
+            map.Pins.Remove(destinationStopPin);
+            destinationStopPin = new Pin() { Label = $"Bajada de autobus: {busStop.route.RouteName}.", Position = busStop.nearestNode.ToPosition(), Icon = FromBundle("Bus End.png") };
+            map.Pins.Add(destinationStopPin);
+
+            var osrm = await GetRoute_OSRM(destiantionPin, destinationStopPin.Position.PositionToTuple());
+            map.Polylines.Remove(polylineToDestination);
+            polylineToDestination = new Polyline() { StrokeColor = Color.Black, StrokeWidth = 5 };
+            osrm.locations.ForEach(l => polylineToDestination.Positions.Add(new Position(l.Lat, l.Long)));
+            map.Polylines.Add(polylineToDestination);
+        }
+        #endregion
+
         #region Developer
         Polyline dev_polyLineRegister;
         private async void RegisterBtn_Clicked(object sender, EventArgs e) {
