@@ -58,6 +58,8 @@ namespace GeoBus.Views {
                 destiantionPin = new Pin() { Address = "Desitno", Label = "Destination", Position = new Position(location.Latitude, location.Longitude), Icon = FromBundle("pin_destination.png") };
                 map.Pins.Add(destiantionPin);
                 await GetNearestRoute((location.Latitude, location.Longitude));
+            } else {
+                routesList.IsVisible = false;
             }
             aiLayout.IsVisible = false;
         }
@@ -127,7 +129,7 @@ namespace GeoBus.Views {
         private async Task GetNearestRoute((double lat, double lon) location) {
             Dictionary<string, (double lat, double lon)> nearestRoutes = new Dictionary<string, (double lat, double lon)>();
             (double lat, double lon) nearestNode = default;
-            const int routesCount = 3;
+            const int routesCount = 2;
             var colors = new Color[] { Color.Red, Color.Green, Color.Blue };
             List<RouteItem> routeItems = new List<RouteItem>();
 
@@ -146,6 +148,7 @@ namespace GeoBus.Views {
                 nearestRoutes.Add(route.RouteName, nearestNode);
             }
             var ordered = nearestRoutes.OrderBy(x => HaversineDistance((location.lat, location.lon), (x.Value.lat, x.Value.lon))).ToDictionary(x => x.Key, x => x.Value);
+            Console.WriteLine(ordered);
             foreach (var route in ordered.Keys.Take(routesCount).Select((value, i) => (value, i))) {
                 var durationToBusStop = (await GetRoute_OSRM(currentLocationPin, GetBusStopNear(route.value, currentLocationPin, out int startIndex).nearestNode.ToPosition().PositionToTuple())).duration;
                 var durationToDestination = (await GetRoute_OSRM(destiantionPin, GetBusStopNear(route.value, destiantionPin, out int endIndex).nearestNode.ToPosition().PositionToTuple())).duration;
